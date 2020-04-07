@@ -144,7 +144,7 @@ class Adafruit_FONA : public FONAStreamType {
   boolean sendUSSD(char *ussdmsg, char *ussdbuff, uint16_t maxlen, uint16_t *readlen);
 
   // Time
-  // boolean enableNetworkTimeSync(boolean onoff);
+  boolean enableNetworkTimeSync(boolean onoff);
   boolean enableNTPTimeSync(boolean onoff, FONAFlashStringPtr ntpserver=0);
   boolean getTime(char *buff, uint16_t maxlen);
   
@@ -308,6 +308,7 @@ class Adafruit_FONA_3G : public Adafruit_FONA {
     boolean playToolkitTone(uint8_t t, uint16_t len);
     boolean hangUp(void);
     boolean pickUp(void);
+    boolean enableNetworkTimeSync(bool onoff);
     // boolean enableGPRS(boolean onoff);
     // boolean enableGPS(boolean onoff);
     // boolean postData3G(const char *server, uint16_t port, const char *connType, const char *URL);
@@ -315,10 +316,14 @@ class Adafruit_FONA_3G : public Adafruit_FONA {
  protected:
     boolean parseReply(FONAFlashStringPtr toreply,
 		       float *f, char divider, uint8_t index);
+    boolean parseReply(FONAFlashStringPtr toreply, uint16_t *v, char divider,
+                    uint8_t index);
 
     boolean sendParseReply(FONAFlashStringPtr tosend,
 			   FONAFlashStringPtr toreply,
 			   float *f, char divider = ',', uint8_t index=0);
+    boolean sendParseReply(FONAFlashStringPtr tosend, FONAFlashStringPtr toreply,
+                        uint16_t *v, char divider = ',', uint8_t index = 0);
 };
 
 class Adafruit_FONA_LTE : public Adafruit_FONA {

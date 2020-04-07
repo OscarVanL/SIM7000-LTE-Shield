@@ -837,7 +837,7 @@ boolean Adafruit_FONA::sendUSSD(char *ussdmsg, char *ussdbuff, uint16_t maxlen, 
 
 /********* TIME **********************************************************/
 
-/*
+
 boolean Adafruit_FONA::enableNetworkTimeSync(boolean onoff) {
   if (onoff) {
     if (! sendCheckReply(F("AT+CLTS=1"), ok_reply))
@@ -851,7 +851,34 @@ boolean Adafruit_FONA::enableNetworkTimeSync(boolean onoff) {
 
   return true;
 }
-*/
+
+bool Adafruit_FONA_3G::enableNetworkTimeSync(bool onoff) {
+    if (onoff) {
+        if (!sendCheckReply(F("AT+CTZU=1"), ok_reply))
+            return false;
+    } else {
+        if (!sendCheckReply(F("AT+CTZU=0"), ok_reply))
+            return false;
+    }
+    // Disable and re-enable FONA's transmit/receive RF circuits
+    // This is because time updates occur during network registration
+    // See 4.1 AT+CFUN (https://simcom.ee/documents/SIM5320/SIMCOM_SIM5320_ATC_EN_V2.05.pdf)
+
+    // Get existing network network functionality level
+    uint16_t prior_level;
+    sendParseReply(F("AT+CFUN?"), F("+CFUN: "), &prior_level);
+    // Set network functionality level to 4 ('disable both transmit and receive RF circuits')
+    if (!sendCheckReply(F("AT+CFUN=4"), ok_reply, 4000))
+        return false;
+    // Restore existing network functionality level
+    if (!sendCheckReply(F("AT+CFUN="), prior_level, ok_reply))
+        return false;
+
+    flushInput(); // eat any 'Unsolicted Result Code'
+
+    return true;
+}
+
 
 boolean Adafruit_FONA::enableNTPTimeSync(boolean onoff, FONAFlashStringPtr ntpserver) {
   if (onoff) {
@@ -901,14 +928,36 @@ boolean Adafruit_FONA::getTime(char *buff, uint16_t maxlen) {
 
 /********* Real Time Clock ********************************************/
 
-boolean Adafruit_FONA::readRTC(uint8_t *year, uint8_t *month, uint8_t *date, uint8_t *hr, uint8_t *min, uint8_t *sec) {
-  uint16_t v;
-  if (! sendParseReply(F("AT+CCLK?"), F("+CCLK: "), &v, '/', 0) ) return false;
-  *year = v;
+boolean Adafruit_FONA::readRTC(uint8_t *year, uint8_t *month, uint8_t *date, uint8_t *hr, uint8_t *min, uint8_t *sec, int8_t *tz) {
+    getReply(F("AT+CCLK?"), (uint16_t) 10000); //Get RTC timeout 10 sec
+    if (strncmp(replybuffer, "+CCLK: ", 7) != 0)
+        return false;
 
-  DEBUG_PRINTLN(*year);
+    char *p = replybuffer+8;   // skip +CCLK: "
+    // Parse Date.
+    int reply = atoi(p);  	       // get Year
+    *year = (uint8_t) reply;       // Save as year
+    p+=3; 				             // skip 3 char
+    reply = atoi(p);
+    *month = (uint8_t) reply;
+    p+=3;
+    reply = atoi(p);
+    *date = (uint8_t) reply;
+    p+=3;
+    reply = atoi(p);
+    *hr = (uint8_t) reply;
+    p+=3;
+    reply = atoi(p);
+    *min = (uint8_t) reply;
+    p+=3;
+    reply = atoi(p);
+    *sec = (uint8_t) reply;
+    p+=3;
+    reply = atoi(p);
+    *tz = reply;
 
-  return true;
+    readline(); // eat OK
+    return true;
 }
 
 boolean Adafruit_FONA::enableRTC(uint8_t i) {
@@ -3256,6 +3305,19 @@ boolean Adafruit_FONA_3G::sendParseReply(FONAFlashStringPtr tosend,
   return true;
 }
 
+bool Adafruit_FONA_3G::sendParseReply(FONAFlashStringPtr tosend,
+                                      FONAFlashStringPtr toreply, uint16_t *v,
+                                      char divider, uint8_t index) {
+    getReply(tosend);
+
+    if (!parseReply(toreply, v, divider, index))
+        return false;
+
+    readline(); // eat 'OK'
+
+    return true;
+}
+
 
 boolean Adafruit_FONA_3G::parseReply(FONAFlashStringPtr toreply,
           float *f, char divider, uint8_t index) {
@@ -3274,4 +3336,24 @@ boolean Adafruit_FONA_3G::parseReply(FONAFlashStringPtr toreply,
   *f = atof(p);
 
   return true;
+}
+
+bool Adafruit_FONA_3G::parseReply(FONAFlashStringPtr toreply, uint16_t *v,
+                                  char divider, uint8_t index) {
+    char *p = prog_char_strstr(replybuffer, (prog_char *)toreply);
+    if (p == 0)
+        return false;
+    p += prog_char_strlen((prog_char *)toreply);
+    // DEBUG_PRINTLN(p);
+    for (uint8_t i = 0; i < index; i++) {
+        // increment dividers
+        p = strchr(p, divider);
+        if (!p)
+            return false;
+        p++;
+        // DEBUG_PRINTLN(p);
+    }
+    *v = atoi(p);
+
+    return true;
 }
