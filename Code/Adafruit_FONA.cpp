@@ -1614,67 +1614,22 @@ boolean Adafruit_FONA::enableGPRS(boolean onoff) {
   return true;
 }
 
-/*
-boolean Adafruit_FONA_3G::enableGPRS(boolean onoff) {
+void Adafruit_FONA::printIP() {
+    getReply(F("AT+IPADDR"));
+}
 
-  if (onoff) {
-    // disconnect all sockets
-    //sendCheckReply(F("AT+CIPSHUT"), F("SHUT OK"), 5000);
-
-    if (! sendCheckReply(F("AT+CGATT=1"), ok_reply, 10000))
-      return false;
-
-
-    // set bearer profile access point name
-    if (apn) {
-      // Send command AT+CGSOCKCONT=1,"IP","<apn value>" where <apn value> is the configured APN name.
-      if (! sendCheckReplyQuoted(F("AT+CGSOCKCONT=1,\"IP\","), apn, ok_reply, 10000))
+//// Testing the DNS of FONA by printing the result of a DNS lookup
+bool Adafruit_FONA_3G::DNSlookup(FONAFlashStringPtr domain, char *ip) {
+    uint8_t length = getReplyQuoted(F("AT+CDNSGIP="), domain, (uint16_t)4000);
+    if (length == 0) {
         return false;
-
-      // set username/password
-      if (apnusername) {
-				char authstring[100] = "AT+CGAUTH=1,1,\"";
-				char *strp = authstring + strlen(authstring);
-				prog_char_strcpy(strp, (prog_char *)apnusername);
-				strp+=prog_char_strlen((prog_char *)apnusername);
-				strp[0] = '\"';
-				strp++;
-				strp[0] = 0;
-
-				if (apnpassword) {
-				  strp[0] = ','; strp++;
-				  strp[0] = '\"'; strp++;
-				  prog_char_strcpy(strp, (prog_char *)apnpassword);
-				  strp+=prog_char_strlen((prog_char *)apnpassword);
-				  strp[0] = '\"';
-				  strp++;
-				  strp[0] = 0;
-				}
-
-				if (! sendCheckReply(authstring, ok_reply, 10000))
-				  return false;
-      }
     }
 
-    // connect in transparent
-    if (! sendCheckReply(F("AT+CIPMODE=1"), ok_reply, 10000))
-      return false;
-    // open network (?)
-    if (! sendCheckReply(F("AT+NETOPEN=,,1"), F("Network opened"), 10000))
-      return false;
-
-    readline(); // eat 'OK'
-  } else {
-    // close GPRS context
-    if (! sendCheckReply(F("AT+NETCLOSE"), F("Network closed"), 10000))
-      return false;
-
-    readline(); // eat 'OK'
-  }
-
-  return true;
+    if (parseCharSeparator(replybuffer, ip, ',',  2, length) == 0) {
+        return false;
+    }
+    return true;
 }
-*/
 
 void Adafruit_FONA::getNetworkInfo(void) {
 	getReply(F("AT+CPSI?"));
@@ -2281,7 +2236,7 @@ void Adafruit_FONA::mqtt_connect_message(const char *protocol, byte *mqtt_messag
   byte username_length = strlen(username);
   byte password_length = strlen(password);
 
-	mqtt_message[0] = 16;                      // MQTT message type CONNECT
+	mqtt_message[0] = 16;                      // MQTT message type CONNECT (HEX: 10)
 
 	byte rem_length = 6 + protocol_length;
 	// Each parameter will add 2 bytes + parameter length
@@ -2297,7 +2252,7 @@ void Adafruit_FONA::mqtt_connect_message(const char *protocol, byte *mqtt_messag
 
 	mqtt_message[1] = rem_length;              // Remaining length of message
 	mqtt_message[2] = 0;                       // Protocol name length MSB
-	mqtt_message[3] = 6;                       // Protocol name length LSB
+	mqtt_message[3] = protocol_length;                       // Protocol name length LSB
 
 	// Use the given protocol name (for example, "MQTT" or "MQIsdp")
 	for (int i=0; i<protocol_length; i++) {
@@ -2398,7 +2353,7 @@ boolean Adafruit_FONA::mqtt_sendPacket(byte *packet, byte len) {
 
 	for (int j = 0; j < len; j++) {
 		// if (packet[j] == NULL) break; // We've reached the end of the actual content
-	  mySerial->write(packet[j]); // Needs to be "write" not "print"
+		mySerial->write(packet[j]); // Needs to be "write" not "print"
 	  DEBUG_PRINT(packet[j]); // Message contents
 	  DEBUG_PRINT(" "); // Space out the bytes
   }
@@ -2409,30 +2364,72 @@ boolean Adafruit_FONA::mqtt_sendPacket(byte *packet, byte len) {
 	DEBUG_PRINTLN("");
   DEBUG_PRINT (F("\t<--- ")); DEBUG_PRINTLN(replybuffer);
 
-	return (strcmp(replybuffer, "SEND OK") == 0);
+	return (strcmp(replybuffer, "OK") == 0);
 }
 
 ////////////////////////////////////////////////////////////
 
-boolean Adafruit_FONA::MQTTconnect(const char *protocol, const char *clientID, const char *username, const char *password) {
-	flushInput();
-	mySerial->println(F("AT+CIPSEND"));
-	readline();
-  DEBUG_PRINT(F("\t<--- ")); DEBUG_PRINTLN(replybuffer);
-  if (replybuffer[0] != '>') return false;
+boolean Adafruit_FONA::MQTTconnect(const char *protocol, const char *IP, int port, const char *clientID, const char *username, const char *password) {
+    int len = 14+strlen(protocol)+strlen(clientID)+strlen(username)+strlen(password);
+    DEBUG_PRINT("MQTTconnect IP: "); DEBUG_PRINTLN(IP);
 
-  byte mqtt_message[127];
-	mqtt_connect_message(protocol, mqtt_message, clientID, username, password);
+    flushInput();
+
+    DEBUG_PRINT(F("\t---> "));
+    DEBUG_PRINT(F("AT+CIPSEND=0,"));
+    DEBUG_PRINTLN(len);
+    //DEBUG_PRINT(',');
+    //DEBUG_PRINT(IP);
+    //DEBUG_PRINT(',');
+    //DEBUG_PRINTLN(port);
+
+    mySerial->print(F("AT+CIPSEND=0,"));
+    mySerial->println(len);
+    //mySerial->print(',');
+    //mySerial->print(IP);
+    //mySerial->print(',');
+    //mySerial->println(port);
+
+    readline();
+    DEBUG_PRINT(F("\t<--- ")); DEBUG_PRINTLN(replybuffer);
+    if (replybuffer[0] != '>') return false;
+
+    byte mqtt_message[127];
+    mqtt_connect_message(protocol, mqtt_message, clientID, username, password);
+
+    if (! mqtt_sendPacket(mqtt_message, len)) return false;
+
+    delay(500);
+
+    DEBUG_PRINTLN(F("CHECKING FOR RESPONSE"));
+    uint16_t resplen = TCPavailable();
 
 
-  if (! mqtt_sendPacket(mqtt_message, 20+strlen(clientID)+strlen(username)+strlen(password))) return false;
 
   return true;
 }
 
-boolean Adafruit_FONA::MQTTpublish(const char* topic, const char* message) {
+boolean Adafruit_FONA::MQTTpublish(const char *IP, int port, const char* topic, const char* message) {
+    int len = 4+strlen(topic)+strlen(message);
+
+    DEBUG_PRINT("MQTTpublish IP: "); DEBUG_PRINTLN(IP);
+
 	flushInput();
-	mySerial->println(F("AT+CIPSEND"));
+
+    DEBUG_PRINT(F("\t---> "));
+    DEBUG_PRINT(F("AT+CIPSEND=0,"));
+    DEBUG_PRINTLN(len);
+    //DEBUG_PRINT(',');
+    //DEBUG_PRINT(IP);
+    //DEBUG_PRINT(',');
+    //DEBUG_PRINTLN(port);
+
+    mySerial->print(F("AT+CIPSEND=0,"));
+    mySerial->println(len);
+    //mySerial->print(',');
+    //mySerial->print(IP);
+    //mySerial->print(',');
+    //mySerial->println(port);
 	readline();
   DEBUG_PRINT(F("\t<--- ")); DEBUG_PRINTLN(replybuffer);
   if (replybuffer[0] != '>') return false;
@@ -2440,7 +2437,7 @@ boolean Adafruit_FONA::MQTTpublish(const char* topic, const char* message) {
   byte mqtt_message[127];
   mqtt_publish_message(mqtt_message, topic, message);
 
-  if (!mqtt_sendPacket(mqtt_message, 4+strlen(topic)+strlen(message))) return false;
+  if (!mqtt_sendPacket(mqtt_message, len)) return false;
 
   return true;
 }
@@ -2554,30 +2551,32 @@ boolean Adafruit_FONA::TCPconnect(char *server, uint16_t port) {
   flushInput();
 
   // close all old connections
-  if (! sendCheckReply(F("AT+CIPSHUT"), F("SHUT OK"), 20000) ) return false;
+
+  //if (! sendCheckReply(F("AT+CIPSHUT"), F("SHUT OK"), 20000) ) return false;
+  //if (!sendCheckReply(F("AT+NETCLOSE"), F("Network closed"), 20000)) return false;
 
   // single connection at a time
-  if (! sendCheckReply(F("AT+CIPMUX=0"), ok_reply) ) return false;
+  //if (! sendCheckReply(F("AT+CIPMUX=0"), ok_reply) ) return false;
 
   // manually read data
   if (! sendCheckReply(F("AT+CIPRXGET=1"), ok_reply) ) return false;
 
 
-  DEBUG_PRINT(F("AT+CIPSTART=\"TCP\",\""));
+  DEBUG_PRINT(F("AT+CIPOPEN=0,\"TCP\","));
   DEBUG_PRINT(server);
-  DEBUG_PRINT(F("\",\""));
+  DEBUG_PRINT(F(","));
   DEBUG_PRINT(port);
-  DEBUG_PRINTLN(F("\""));
+  DEBUG_PRINTLN(F(""));
 
 
-  mySerial->print(F("AT+CIPSTART=\"TCP\",\""));
+  mySerial->print(F("AT+CIPOPEN=0,\"TCP\","));
   mySerial->print(server);
-  mySerial->print(F("\",\""));
+  mySerial->print(F(","));
   mySerial->print(port);
-  mySerial->println(F("\""));
+  mySerial->println(F(""));
 
+  if (! expectReply(F("Connect ok"), 3000)) return false;
   if (! expectReply(ok_reply)) return false;
-  if (! expectReply(F("CONNECT OK"))) return false;
 
   // looks like it was a success (?)
   return true;
@@ -2588,6 +2587,7 @@ boolean Adafruit_FONA::TCPclose(void) {
 }
 
 boolean Adafruit_FONA::TCPconnected(void) {
+  return true; // Bodge to get Adafruit_MQTT_FONA to work
   if (! sendCheckReply(F("AT+CIPSTATUS"), ok_reply, 100) ) return false;
   readline(100);
 
@@ -2629,7 +2629,7 @@ boolean Adafruit_FONA::TCPsend(char *packet, uint8_t len) {
 uint16_t Adafruit_FONA::TCPavailable(void) {
   uint16_t avail;
 
-  if (! sendParseReply(F("AT+CIPRXGET=4"), F("+CIPRXGET: 4,"), &avail, ',', 0) ) return false;
+  if (! sendParseReply(F("AT+CIPRXGET=4,0"), F("+CIPRXGET: 4,0"), &avail, ',', 1) ) return false;
 
 
   DEBUG_PRINT (avail); DEBUG_PRINTLN(F(" bytes available"));
@@ -2966,7 +2966,7 @@ uint8_t Adafruit_FONA::readline(uint16_t timeout, boolean multiline) {
   uint16_t replyidx = 0;
 
   while (timeout--) {
-    if (replyidx >= 254) {
+    if (replyidx >= 127) {
       //DEBUG_PRINTLN(F("SPACE"));
       break;
     }
@@ -3274,6 +3274,44 @@ boolean Adafruit_FONA::parseReplyFloat(FONAFlashStringPtr toreply,
   *f = atof(p);
 
   return true;
+}
+
+/*
+ * Separates a character array by a divider character and returns the split text
+ * Eg: text="hello,world,!" with index=1 gives "world"
+ */
+uint8_t Adafruit_FONA_3G::parseCharSeparator(char *text, char *split, char divider, uint8_t index, uint8_t length) {
+    char * div1; // Stores pointer to divider character
+    char * div2;
+    uint8_t count = 1; // Current index of divider
+    div1=strchr(text,divider); // Find first instance of divider character
+
+    // At least one instance of the divider should exist.
+    if (div1 == NULL) {
+        return 0;
+    }
+
+    while (div1!=NULL) {
+        // At correct index
+        if (count == index) {
+            // Handle case where text is within other dividers, eg: hel,lo,world where we want 'lo'.
+            div2 = strchr(div1+1, divider);
+            if (div2!=NULL) {
+                uint8_t size = (div2-text)-(div1-text); // Calculate number of characters between divisors
+                memcpy(split, div1+1, size);
+                return size;
+            } else {
+                uint8_t size = (div2-text)-length; // Calculate number of characters between divisor and end of string
+                memcpy(split, div1+1, size);
+                return size;
+            }
+        }
+        // increment dividers
+        div1 = strchr(div1+1, divider);
+        count++;
+    }
+
+    return 0;
 }
 
 // needed for CBC and others

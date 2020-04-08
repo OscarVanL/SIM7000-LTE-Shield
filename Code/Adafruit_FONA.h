@@ -160,6 +160,8 @@ class Adafruit_FONA : public FONAStreamType {
   void setNetworkSettings(FONAFlashStringPtr apn, FONAFlashStringPtr username=0, FONAFlashStringPtr password=0);
   boolean postData(const char *request_type, const char *URL, const char *body = "", const char *token = "", uint32_t bodylen = 0);
   boolean postData(const char *server, uint16_t port, const char *connType, const char *URL, const char *body = "");
+  void printIP(void);
+
   void getNetworkInfo(void);
 
   // GPS handling
@@ -180,9 +182,9 @@ class Adafruit_FONA : public FONAStreamType {
   uint16_t TCPread(uint8_t *buff, uint8_t len);
 
   // MQTT
-  boolean MQTTconnect(const char *protocol, const char *clientID, const char *username = "", const char *password = "");
+  boolean MQTTconnect(const char *protocol, const char *IP, int port, const char *clientID, const char *username = "", const char *password = "");
   boolean MQTTdisconnect(void);
-  boolean MQTTpublish(const char* topic, const char* message);
+  boolean MQTTpublish(const char *IP, int port, const char* topic, const char* message);
   boolean MQTTsubscribe(const char* topic, byte QoS);
   boolean MQTTunsubscribe(const char* topic);
   boolean MQTTreceive(const char* topic, const char* buf, int maxlen);
@@ -242,7 +244,7 @@ class Adafruit_FONA : public FONAStreamType {
   int8_t _rstpin;
   uint8_t _type;
 
-  char replybuffer[255];
+  char replybuffer[128];
   FONAFlashStringPtr apn;
   FONAFlashStringPtr apnusername;
   FONAFlashStringPtr apnpassword;
@@ -312,6 +314,8 @@ class Adafruit_FONA_3G : public Adafruit_FONA {
     // boolean enableGPRS(boolean onoff);
     // boolean enableGPS(boolean onoff);
     // boolean postData3G(const char *server, uint16_t port, const char *connType, const char *URL);
+    bool DNSlookup(FONAFlashStringPtr domain, char *ip);
+    uint8_t parseCharSeparator(char *text, char *split, char divider, uint8_t index, uint8_t length);
 
  protected:
     boolean parseReply(FONAFlashStringPtr toreply,
